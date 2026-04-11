@@ -1,8 +1,7 @@
 local M = {
   job = nil,
-  mode = "normal",
+  mode = "console",
   co = nil,
-  send = nil,
 }
 
 local Split = require("nui.split")
@@ -37,6 +36,7 @@ local function highlight_frame()
     syntax match Title /^Frame$/
     syntax match CursorLineNr /  \zs\d\+\ze[\t\s]\+/
     syntax match String /▸ .*/
+    syntax match Keyword /(.*)\ze\s*▸ .*/
   ]])
 end
 
@@ -64,8 +64,84 @@ local function highlight_args()
   ]])
 end
 
-local function render(self, data, console, frame, locals, args)
-  if self.mode == "normal" then
+local function render(self, data, console, frame, locals, args, buffers)
+  if data:find("__args__ start") then
+    data = data:gsub("__args__ start", "")
+    self.mode = "args"
+  end
+  if self.mode == "args" then
+    buffers.args = buffers.args .. data
+    if data:find("__args__ end") then
+      buffers.args = buffers.args:gsub("__args__ end", "")
+      local args_str = buffers.args
+      args_str = args_str:gsub("%(gdb%)%s*", "")
+      vim.api.nvim_buf_set_text(
+        args.bufnr,
+        -1,
+        -1,
+        -1,
+        -1,
+        vim.split(args_str, "\n")
+      )
+      buffers.args = ""
+      coroutine.resume(self.co)
+    end
+  end
+
+  if data:find("__locals__ start") then
+    data = data:gsub("__locals__ start", "")
+    self.mode = "locals"
+  end
+  if self.mode == "locals" then
+    buffers.locals = buffers.locals .. data
+    if data:find("__locals__ end") then
+      buffers.locals = buffers.locals:gsub("__locals__ end", "")
+      local locals_str = buffers.locals or ""
+      locals_str = locals_str:gsub("%(gdb%)%s*", "")
+      vim.api.nvim_buf_set_text(
+        locals.bufnr,
+        -1,
+        -1,
+        -1,
+        -1,
+        vim.split(locals_str, "\n")
+      )
+      buffers.locals = ""
+      coroutine.resume(self.co)
+    end
+  end
+
+  if data:find("__frame__ start") then
+    data = data:gsub("__frame__ start", "")
+    self.mode = "frame"
+  end
+  if self.mode == "frame" then
+    buffers.frame = buffers.frame .. data
+    if data:find("__frame__ end") then
+      buffers.frame = buffers.frame:gsub("__frame__ end", "")
+      local function_name, filename, code_str =
+        buffers.frame:match("in ([^%s]*).*at (.*):%d*\n(.*)%(gdb%)")
+      filename = filename and filename or buffers.frame:match(" from (.*)\n+")
+      local frame_str = (code_str and ("(%s) ▸ %s\n  %s"):format(
+        function_name,
+        filename,
+        code_str
+      ) or (filename and "▸ " .. filename or "")):gsub("%(gdb%) ", "")
+
+      vim.api.nvim_buf_set_text(
+        frame.bufnr,
+        -1,
+        -1,
+        -1,
+        -1,
+        vim.split(frame_str, "\n")
+      )
+      buffers.frame = ""
+      coroutine.resume(self.co)
+    end
+  end
+
+  if self.mode == "console" then
     vim.api.nvim_buf_set_text(
       console.bufnr,
       -1,
@@ -74,52 +150,6 @@ local function render(self, data, console, frame, locals, args)
       -1,
       vim.split(data, "\n")
     )
-  elseif self.mode == "frame" then
-    local filename, code_str = data:match("at (.*):%d*\n(.*)%(gdb%)")
-    filename = filename and filename or data:match(" from (.*)\n+")
-    local frame_str = (code_str and ("Frame\n▸ %s\n  %s"):format(
-      filename,
-      code_str
-    ) or (filename and "Frame\n▸ " .. filename or "Frame")):gsub(
-      "%(gdb%) ",
-      ""
-    )
-    vim.api.nvim_buf_set_lines(
-      frame.bufnr,
-      0,
-      -1,
-      false,
-      vim.split(frame_str, "\n")
-    )
-    coroutine.resume(self.co)
-  elseif self.mode == "locals" then
-    local locals_str = data:match("(.*)\n%(gdb%).*")
-    locals_str = (locals_str and "Locals\n" .. locals_str or "Locals"):gsub(
-      "%(gdb%) ",
-      ""
-    )
-    vim.api.nvim_buf_set_lines(
-      locals.bufnr,
-      0,
-      -1,
-      false,
-      vim.split(locals_str, "\n")
-    )
-    coroutine.resume(self.co)
-  elseif self.mode == "args" then
-    local args_str = data:match("(.*)\n%(gdb%).*")
-    args_str = (args_str and "Args\n" .. args_str or "Args"):gsub(
-      "%(gdb%) ",
-      ""
-    )
-    vim.api.nvim_buf_set_lines(
-      args.bufnr,
-      0,
-      -1,
-      false,
-      vim.split(args_str, "\n")
-    )
-    coroutine.resume(self.co)
   end
 end
 
@@ -165,6 +195,10 @@ function M:layout()
     }, { dir = "col" })
   )
   console:map("n", "<cr>", function()
+    self.mode = "console"
+    vim.api.nvim_buf_set_lines(frame.bufnr, 0, -1, false, { "Frame", "" })
+    vim.api.nvim_buf_set_lines(locals.bufnr, 0, -1, false, { "Locals", "" })
+    vim.api.nvim_buf_set_lines(args.bufnr, 0, -1, false, { "Args", "" })
     local line = vim.api.nvim_get_current_line()
     local frame_num, filename, lnum =
       line:match("#(%d+) .* in .* at (.*):(%d+)")
@@ -196,14 +230,19 @@ function M:layout()
     coroutine.wrap(function()
       self.co = assert(coroutine.running())
       if self.job then
-        self.mode = "frame"
+        self.job:write("echo __frame__ start\n")
         self.job:write(("frame %s\n"):format(frame_num))
+        self.job:write("echo __frame__ end\n")
         coroutine.yield()
-        self.mode = "locals"
+
+        self.job:write("echo __locals__ start\n")
         self.job:write("info locals\n")
+        self.job:write("echo __locals__ end\n")
         coroutine.yield()
-        self.mode = "args"
+
+        self.job:write("echo __args__ start\n")
         self.job:write("info args\n")
+        self.job:write("echo __args__ end\n")
         coroutine.yield()
       end
     end)()
@@ -279,25 +318,36 @@ function M:gdb_start(core)
       coroutine.resume(co, true)
     end)
     coroutine.yield()
+    local buffers = {
+      locals = "",
+      args = "",
+      frame = "",
+      console = "",
+    }
 
-    self.job = vim.system(
-      { "gdb", self.elf, core, "-ex", "set width unlimited", "-ex", "bt" },
-      {
-        stdin = true,
-        stdout = vim.schedule_wrap(function(err, data)
-          if err or not data then
-            return
-          end
-          render(self, data, console, frame, locals, args)
-        end),
-        stderr = vim.schedule_wrap(function(err, data)
-          if err or not data then
-            return
-          end
-          render(self, data, console, frame, locals, args)
-        end),
-      }
-    )
+    self.job = vim.system({
+      "gdb",
+      self.elf,
+      core,
+      "-ex",
+      "set width unlimited",
+      "-ex",
+      "bt",
+    }, {
+      stdin = true,
+      stdout = vim.schedule_wrap(function(err, data)
+        if err or not data then
+          return
+        end
+        render(self, data, console, frame, locals, args, buffers)
+      end),
+      stderr = vim.schedule_wrap(function(err, data)
+        if err or not data then
+          return
+        end
+        render(self, data, console, frame, locals, args, buffers)
+      end),
+    })
   end)()
 end
 

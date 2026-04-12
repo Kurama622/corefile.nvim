@@ -20,6 +20,7 @@ local function highlight_console()
     syntax match GdbArgs /\<\zs\w\+\ze\>=/
     syntax match GdbSource /) from \zs.*$/
     syntax match GdbSource /at \zs[^ ]\+:\d\+$/
+    syntax match ErrorMsg /^❌️ .*/
     highlight GdbLink guifg=#84a800 
     highlight GdbVersion guifg=#bb9af7 gui=bold
     highlight GdbImportItem guifg=#bc84a8 
@@ -141,7 +142,7 @@ local function render(self, data, console, frame, locals, args, buffers)
     end
   end
 
-  if self.mode == "console" then
+  if self.mode:find("console") then
     vim.api.nvim_buf_set_text(
       console.bufnr,
       -1,
@@ -150,6 +151,12 @@ local function render(self, data, console, frame, locals, args, buffers)
       -1,
       vim.split(data, "\n")
     )
+    if self.mode == "console-cmd" then
+      vim.api.nvim_win_set_cursor(console.winid, {
+        vim.api.nvim_buf_line_count(console.bufnr),
+        #vim.api.nvim_get_current_line(),
+      })
+    end
   end
 end
 
@@ -194,6 +201,14 @@ function M:layout()
       Layout.Box(frame, { size = "30%" }),
     }, { dir = "col" })
   )
+
+  console:map("i", "<cr>", function()
+    self.mode = "console-cmd"
+    vim.api.nvim_buf_set_lines(console.bufnr, -1, -1, false, { "" })
+    local cmd = vim.api.nvim_get_current_line():gsub("%(gdb%)", "") .. "\n"
+    self.job:write(cmd)
+  end)
+
   console:map("n", "<cr>", function()
     self.mode = "console"
     vim.api.nvim_buf_set_lines(frame.bufnr, 0, -1, false, { "Frame", "" })

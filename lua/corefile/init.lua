@@ -120,7 +120,7 @@ local function render(self, data, console, frame, locals, args, buffers)
     if data:find("__frame__ end") then
       buffers.frame = buffers.frame:gsub("__frame__ end", "")
       local function_name, filename, code_str =
-        buffers.frame:match("in ([^%s]*).*at (.*):%d*\n(.*)%(gdb%)")
+        buffers.frame:match(" ([^%s]*) %(.*at (.*):%d*\n(.*)%(gdb%)")
       filename = filename and filename or buffers.frame:match(" from (.*)\n+")
       local frame_str = (code_str and ("(%s) ▸ %s\n  %s"):format(
         function_name,
@@ -203,6 +203,7 @@ function M:layout()
     local frame_num, filename, lnum =
       line:match("#(%d+) .* in .* at (.*):(%d+)")
     frame_num = frame_num and frame_num or line:match("#(%d+) .* from .*")
+    frame_num = frame_num and frame_num or line:match("#(%d+) .* at .*:%d+")
 
     filename = (
       filename

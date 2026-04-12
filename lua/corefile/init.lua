@@ -157,6 +157,8 @@ local function render(self, data, console, frame, locals, args, buffers)
         vim.api.nvim_buf_line_count(console.bufnr),
         #vim.api.nvim_get_current_line(),
       })
+    else
+      vim.o.statusline = "%=(Loading Core File)%="
     end
   end
 end
@@ -176,7 +178,14 @@ function M:layout()
   local locals = Split({ win_options = win_options })
   local args = Split({ win_options = win_options })
   local frame = Split({ win_options = win_options })
-  local console = Split({ enter = false, win_options = win_options })
+  local console = Split({
+    enter = false,
+    win_options = vim.tbl_deep_extend(
+      "force",
+      win_options,
+      { cursorline = true }
+    ),
+  })
 
   local console_component = Layout(
     {
@@ -277,6 +286,9 @@ function M:layout()
     watch_component:mount()
     vim.api.nvim_set_current_win(source.winid)
     console_component:mount()
+    local ns = vim.api.nvim_create_namespace("console_ns")
+    vim.api.nvim_set_hl(ns, "CursorLine", { bold = true })
+    vim.api.nvim_win_set_hl_ns(console.winid, ns)
     vim.api.nvim_set_current_win(console.winid)
 
     pcall(vim.api.nvim_win_call, console.winid, highlight_console)
@@ -343,6 +355,7 @@ function M:gdb_start(core)
       coroutine.resume(co, true)
     end)
     coroutine.yield()
+
     local buffers = {
       locals = "",
       args = "",

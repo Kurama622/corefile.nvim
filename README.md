@@ -1,5 +1,7 @@
 # corefile.nvim
 
+![corefile.nvim](https://github.com/user-attachments/assets/6eda6f27-f751-45a0-a111-786eade91aae)
+
 ## Installation
 
 ```lua
@@ -20,4 +22,10 @@
 ```bash
 ELF=test
 SRC_DIR=/home/kurama/Github/project/src/
+```
+
+## Usage
+
+```
+nvim <core file>
 ```

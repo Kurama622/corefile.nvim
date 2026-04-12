@@ -6,6 +6,7 @@ local M = {
 
 local Split = require("nui.split")
 local Layout = require("nui.layout")
+local event = require("nui.utils.autocmd").event
 
 local function highlight_console()
   vim.cmd([[
@@ -201,6 +202,14 @@ function M:layout()
       Layout.Box(frame, { size = "30%" }),
     }, { dir = "col" })
   )
+
+  for _, comp in pairs({ console, locals, args, frame }) do
+    comp:on(event.WinClosed, function()
+      vim.uv.kill(-self.job.pid, "sigterm")
+      console_component:unmount()
+      watch_component:unmount()
+    end)
+  end
 
   console:map("i", "<cr>", function()
     self.mode = "console-cmd"

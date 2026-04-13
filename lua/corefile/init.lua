@@ -22,13 +22,6 @@ local function highlight_console()
     syntax match GdbSource /) from \zs.*$/
     syntax match GdbSource /at \zs[^ ]\+:\d\+$/
     syntax match ErrorMsg /^❌️ .*/
-    highlight GdbLink guifg=#84a800 
-    highlight GdbVersion guifg=#bb9af7 gui=bold
-    highlight GdbImportItem guifg=#bc84a8 
-    highlight GdbAddress guifg=#268bd2
-    highlight GdbFunction guifg=#e0af68
-    highlight GdbArgs guifg=#887ec8
-    highlight GdbSource guifg=#2aa198
   ]])
 end
 
@@ -50,7 +43,7 @@ local function highlight_locals()
     syntax match Conceal / = \zs\<0x[0-9a-z]\+\> /
     syntax match Conceal /No symbol table info available./
     syntax match Conceal /No locals./
-    highlight GdbArgs guifg=#887ec8
+    syntax match Conceal /<optimized out>/
   ]])
 end
 
@@ -62,7 +55,7 @@ local function highlight_args()
     syntax match Conceal / = \zs\<0x[0-9a-z]\+\> /
     syntax match Conceal /No symbol table info available./
     syntax match Conceal /No arguments./
-    highlight GdbArgs guifg=#887ec8
+    syntax match Conceal /<optimized out>/
   ]])
 end
 
@@ -122,8 +115,13 @@ local function render(self, data, console, frame, locals, args, buffers)
     if data:find("__frame__ end") then
       buffers.frame = buffers.frame:gsub("__frame__ end", "")
       local function_name, filename, code_str =
-        buffers.frame:match(" ([^%s]*) %(.*at (.*):%d*\n(.*)%(gdb%)")
+        buffers.frame:match("#%d+ .* in (.*) %(.*at (.*):%d*\n(.*)%(gdb%)")
       filename = filename and filename or buffers.frame:match(" from (.*)\n+")
+      if filename == nil then
+        function_name, filename, code_str =
+          buffers.frame:match("#%d+ (.*) %(.*at (.*):%d*\n(.*)%(gdb%)")
+      end
+
       local frame_str = (code_str and ("(%s) ▸ %s\n  %s"):format(
         function_name,
         filename,
@@ -236,7 +234,9 @@ function M:layout()
     local frame_num, filename, lnum =
       line:match("#(%d+) .* in .* at (.*):(%d+)")
     frame_num = frame_num and frame_num or line:match("#(%d+) .* from .*")
-    frame_num = frame_num and frame_num or line:match("#(%d+) .* at .*:%d+")
+    if frame_num == nil then
+      frame_num, filename, lnum = line:match("#(%d+) .* at (.*):(%d+)")
+    end
 
     filename = (
       filename
@@ -304,6 +304,15 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("BufReadCmd", {
     pattern = M.pattern,
     callback = function(args)
+      vim.cmd([[
+        highlight GdbLink guifg=#84a800 
+        highlight GdbVersion guifg=#bb9af7 gui=bold
+        highlight GdbImportItem guifg=#bc84a8 
+        highlight GdbAddress guifg=#268bd2
+        highlight GdbFunction guifg=#e0af68
+        highlight GdbArgs guifg=#887ec8
+        highlight GdbSource guifg=#2aa198
+      ]])
       local core = args.file
       M:gdb_start(core)
     end,

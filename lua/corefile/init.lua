@@ -44,6 +44,10 @@ local function highlight_locals()
     syntax match Conceal /No symbol table info available./
     syntax match Conceal /No locals./
     syntax match Conceal /<optimized out>/
+    syntax match Boolean /\<true\>/
+    syntax match Boolean /\<false\>/
+    syntax match Number /\<\d\+\>/
+    syntax match String /"[^"]\+"/
   ]])
 end
 
@@ -56,6 +60,10 @@ local function highlight_args()
     syntax match Conceal /No symbol table info available./
     syntax match Conceal /No arguments./
     syntax match Conceal /<optimized out>/
+    syntax match Boolean /\<true\>/
+    syntax match Boolean /\<false\>/
+    syntax match Number /\<\d\+\>/
+    syntax match String /"[^"]\+"/
   ]])
 end
 
@@ -119,7 +127,7 @@ local function render(self, data, console, frame, locals, args, buffers)
       filename = filename and filename or buffers.frame:match(" from (.*)\n+")
       if filename == nil then
         function_name, filename, code_str =
-          buffers.frame:match("#%d+ (.*) %(.*at (.*):%d*\n(.*)%(gdb%)")
+          buffers.frame:match("#%d+%s*(.*) %(.*at (.*):%d*\n(.*)%(gdb%)")
       end
 
       local frame_str = (code_str and ("(%s) ▸ %s\n  %s"):format(

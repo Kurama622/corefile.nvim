@@ -1,6 +1,6 @@
 # corefile.nvim
 
-![corefile.nvim](https://github.com/user-attachments/assets/6eda6f27-f751-45a0-a111-786eade91aae)
+![corefile.nvim](https://github.com/user-attachments/assets/2e97ad35-b4e0-4a75-88f7-727858c39d6f)
 
 ## Installation
 

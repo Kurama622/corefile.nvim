@@ -29,3 +29,7 @@ SRC_DIR=/home/kurama/Github/project/src/
 ```
 nvim <core file>
 ```
+
+> #5  0x00005560016f0316 in print (str=0x5560016f2048 "hello world fjkagaglakglaglagkagkalgklagkalkkajrfgja") at test.cpp:13
+
+Select a frame and press Enter

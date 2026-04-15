@@ -18,7 +18,11 @@ local function highlight_console()
     syntax match GdbAddress / \<0x[0-9a-z]\+\> /
     syntax match Conceal /=\zs\<0x[0-9a-z]\+\> /
     syntax match Conceal /\.\.\.\+/
+    syntax match Conceal /<optimized out>/
     syntax match String /"[^"]\+"/
+    syntax match String /'[^']\+'/
+    syntax match Boolean /\<true\>/
+    syntax match Boolean /\<false\>/
     syntax match GdbFunction /in \zs[^ ]\+/
     syntax match GdbArgs /\<\zs\w\+\ze\>=/
     syntax match GdbLink /) from \zs.*$/
@@ -34,6 +38,7 @@ local function highlight_frame()
     syntax match CursorLineNr /  \zs\d\+\ze[\t\s]\+/
     syntax match String /▸ .*/
     syntax match Keyword /(.*)\ze\s*▸ .*/
+    syntax match ErrorMsg /:\s*\zsNo such file or directory./
   ]])
 end
 
@@ -50,6 +55,7 @@ local function highlight_locals()
     syntax match Boolean /\<false\>/
     syntax match Number /\<\d\+\>/
     syntax match String /"[^"]\+"/
+    syntax match String /'[^']\+'/
   ]])
 end
 
@@ -66,6 +72,7 @@ local function highlight_args()
     syntax match Boolean /\<false\>/
     syntax match Number /\<\d\+\>/
     syntax match String /"[^"]\+"/
+    syntax match String /'[^']\+'/
   ]])
 end
 
@@ -314,15 +321,6 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("BufReadCmd", {
     pattern = M.pattern,
     callback = function(args)
-      vim.cmd([[
-        highlight GdbLink guifg=#bc84a8
-        highlight GdbLinkItalic guifg=#bc84a8 gui=italic
-        highlight GdbMark guifg=#bb9af7 gui=bold
-        highlight GdbImportItem guifg=#84a800
-        highlight GdbAddress guifg=#268bd2
-        highlight GdbFunction guifg=#e0af68
-        highlight GdbArgs guifg=#887ec8
-      ]])
       local core = args.file
       M:gdb_start(core)
     end,
@@ -331,7 +329,6 @@ end
 
 function M:gdb_start(core)
   local env_file = vim.fs.joinpath(vim.uv.cwd(), self.config_name)
-
   local locals, args, frame, console, source = self:layout()
 
   return coroutine.wrap(function()

@@ -188,16 +188,19 @@ local function render(self, data, console, frame, locals, args, buffers)
         emit(self, {
           kind = "end",
           percentage = 100,
-          message = "Loading Done",
+          message = "",
           title = "Done",
         })
       else
-        emit(self, {
-          kind = "report",
-          percentage = 100,
-          message = "Loading...",
-          title = "Loading",
-        })
+        local p = tonumber(lines_list[1]:match("#(%d+)%s*0x"))
+        if p then
+          emit(self, {
+            kind = "report",
+            percentage = p / (p + 1),
+            message = "",
+            title = "Loading",
+          })
+        end
       end
     end
   end

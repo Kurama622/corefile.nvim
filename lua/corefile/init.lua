@@ -1,19 +1,44 @@
+local progress = { idx = -1 }
+
 local M = {
   job = nil,
   mode = "console",
   co = nil,
+  progress = progress,
 }
 
 local Split = require("nui.split")
 local Layout = require("nui.layout")
 local event = require("nui.utils.autocmd").event
 
-local function emit(self, ev)
+function progress:start()
+  if self.client_id and vim.lsp.get_client_by_id(self.client_id) then
+    return
+  end
+  self.client_id = vim.lsp.start({
+    name = "Corefile",
+    cmd = { "tail", "-f", "/dev/null" },
+    root_dir = vim.loop.cwd(),
+  })
+end
+
+function progress:stop()
+  local client = vim.lsp.get_client_by_id(self.client_id)
+  if client then
+    client:stop()
+  end
+  self.idx = -1
+  self.client_id = nil
+end
+
+function progress:emit(ev)
+  self.idx = self.idx + 1
+  ev.percentage = ev.percentage or math.floor(100 * self.idx / (self.idx + 1))
   vim.api.nvim_exec_autocmds("LspProgress", {
     data = {
       client_id = self.client_id,
       params = {
-        token = "fake-progress",
+        token = "load-corefile-progress",
         value = {
           kind = ev.kind,
           title = ev.title,
@@ -185,22 +210,18 @@ local function render(self, data, console, frame, locals, args, buffers)
       })
     else
       if lines_list[#lines_list] == "(gdb) " then
-        emit(self, {
+        self.progress:emit({
           kind = "end",
           percentage = 100,
           message = "",
           title = "Done",
         })
       else
-        local p = tonumber(lines_list[1]:match("#(%d+)%s*0x"))
-        if p then
-          emit(self, {
-            kind = "report",
-            percentage = p / (p + 1),
-            message = "",
-            title = "Loading",
-          })
-        end
+        self.progress:emit({
+          kind = "report",
+          message = "",
+          title = "Loading",
+        })
       end
     end
   end
@@ -257,10 +278,7 @@ function M:layout()
 
   for _, comp in pairs({ console, locals, args, frame }) do
     comp:on(event.WinClosed, function()
-      local client = vim.lsp.get_client_by_id(self.client_id)
-      if client then
-        client:stop()
-      end
+      self.progress:stop()
       vim.uv.kill(-self.job.pid, "sigterm")
       console_component:unmount()
       watch_component:unmount()
@@ -360,11 +378,7 @@ function M.setup(opts)
 end
 
 function M:gdb_start(core)
-  self.client_id = vim.lsp.start({
-    name = "Corefile",
-    cmd = { "tail", "-f", "/dev/null" },
-    root_dir = vim.loop.cwd(),
-  })
+  self.progress:start()
   local env_file = vim.fs.joinpath(vim.uv.cwd(), self.config_name)
   local locals, args, frame, console, source = self:layout()
 

@@ -6,9 +6,9 @@
 
 ```lua
   {
-    "Kurama622/corefile.nvim/",
+    "Kurama622/corefile.nvim",
     opts = {
-      pattern = "core.*",  -- core file matching pattern
+      pattern = "core__*",  -- core file matching pattern
       config_name = ".corefilerc",
     },
   },

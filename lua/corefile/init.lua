@@ -1,12 +1,54 @@
+local progress = { idx = -1 }
+
 local M = {
   job = nil,
   mode = "console",
   co = nil,
+  progress = progress,
 }
 
 local Split = require("nui.split")
 local Layout = require("nui.layout")
 local event = require("nui.utils.autocmd").event
+
+function progress:start()
+  if self.client_id and vim.lsp.get_client_by_id(self.client_id) then
+    return
+  end
+  self.client_id = vim.lsp.start({
+    name = "Corefile",
+    cmd = { "tail", "-f", "/dev/null" },
+    root_dir = vim.loop.cwd(),
+  })
+end
+
+function progress:stop()
+  local client = vim.lsp.get_client_by_id(self.client_id)
+  if client then
+    client:stop()
+  end
+  self.idx = -1
+  self.client_id = nil
+end
+
+function progress:emit(ev)
+  self.idx = self.idx + 1
+  ev.percentage = ev.percentage or math.floor(100 * self.idx / (self.idx + 1))
+  vim.api.nvim_exec_autocmds("LspProgress", {
+    data = {
+      client_id = self.client_id,
+      params = {
+        token = "load-corefile-progress",
+        value = {
+          kind = ev.kind,
+          title = ev.title,
+          message = ev.message,
+          percentage = ev.percentage,
+        },
+      },
+    },
+  })
+end
 
 local function highlight_console()
   vim.cmd([[
@@ -159,21 +201,28 @@ local function render(self, data, console, frame, locals, args, buffers)
   end
 
   if self.mode:find("console") then
-    vim.api.nvim_buf_set_text(
-      console.bufnr,
-      -1,
-      -1,
-      -1,
-      -1,
-      vim.split(data, "\n")
-    )
+    local lines_list = vim.split(data, "\n")
+    vim.api.nvim_buf_set_text(console.bufnr, -1, -1, -1, -1, lines_list)
     if self.mode == "console-cmd" then
       vim.api.nvim_win_set_cursor(console.winid, {
         vim.api.nvim_buf_line_count(console.bufnr),
         #vim.api.nvim_get_current_line(),
       })
     else
-      vim.o.statusline = "%=(Loading Core File)%="
+      if lines_list[#lines_list] == "(gdb) " then
+        self.progress:emit({
+          kind = "end",
+          percentage = 100,
+          message = "",
+          title = "Done",
+        })
+      else
+        self.progress:emit({
+          kind = "report",
+          message = "",
+          title = "Loading",
+        })
+      end
     end
   end
 end
@@ -229,6 +278,7 @@ function M:layout()
 
   for _, comp in pairs({ console, locals, args, frame }) do
     comp:on(event.WinClosed, function()
+      self.progress:stop()
       vim.uv.kill(-self.job.pid, "sigterm")
       console_component:unmount()
       watch_component:unmount()
@@ -328,6 +378,7 @@ function M.setup(opts)
 end
 
 function M:gdb_start(core)
+  self.progress:start()
   local env_file = vim.fs.joinpath(vim.uv.cwd(), self.config_name)
   local locals, args, frame, console, source = self:layout()
 

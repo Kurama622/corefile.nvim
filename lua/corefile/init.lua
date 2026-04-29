@@ -2,6 +2,7 @@ local progress = { idx = -1 }
 
 local M = {
   job = nil,
+  job_status = nil,
   mode = "console",
   co = nil,
   progress = progress,
@@ -32,6 +33,9 @@ function progress:stop()
 end
 
 function progress:emit(ev)
+  if self.client_id == nil then
+    return
+  end
   self.idx = self.idx + 1
   ev.percentage = ev.percentage or math.floor(100 * self.idx / (self.idx + 1))
   vim.api.nvim_exec_autocmds("LspProgress", {
@@ -70,6 +74,7 @@ local function highlight_console()
     syntax match GdbLink /) from \zs.*$/
     syntax match GdbLinkItalic /at \zs[^ ]\+:\d\+$/
     syntax match ErrorMsg /^❌️ .*/
+    syntax match ErrorMsg /:\s*\zsNo such file or directory./
   ]])
 end
 
@@ -118,7 +123,16 @@ local function highlight_args()
   ]])
 end
 
-local function render(self, data, console, frame, locals, args, buffers)
+local function render(
+  self,
+  data,
+  console,
+  frame,
+  locals,
+  args,
+  buffers,
+  data_type
+)
   if data:find("__args__ start") then
     data = data:gsub("__args__ start", "")
     self.mode = "args"
@@ -202,7 +216,11 @@ local function render(self, data, console, frame, locals, args, buffers)
 
   if self.mode:find("console") then
     local lines_list = vim.split(data, "\n")
-    vim.api.nvim_buf_set_text(console.bufnr, -1, -1, -1, -1, lines_list)
+    if data_type == "stdout" then
+      vim.api.nvim_buf_set_text(console.bufnr, -1, -1, -1, -1, lines_list)
+    else
+      vim.api.nvim_buf_set_text(console.bufnr, -1, 0, -1, 0, lines_list)
+    end
     if self.mode == "console-cmd" then
       vim.api.nvim_win_set_cursor(console.winid, {
         vim.api.nvim_buf_line_count(console.bufnr),
@@ -279,7 +297,9 @@ function M:layout()
   for _, comp in pairs({ console, locals, args, frame }) do
     comp:on(event.WinClosed, function()
       self.progress:stop()
+      self.job_status = false
       vim.uv.kill(-self.job.pid, "sigterm")
+      self.job = nil
       console_component:unmount()
       watch_component:unmount()
     end)
@@ -430,6 +450,7 @@ function M:gdb_start(core)
       console = "",
     }
 
+    self.job_status = true
     self.job = vim.system({
       "gdb",
       self.elf,
@@ -441,16 +462,16 @@ function M:gdb_start(core)
     }, {
       stdin = true,
       stdout = vim.schedule_wrap(function(err, data)
-        if err or not data then
+        if err or not data or not self.job_status then
           return
         end
-        render(self, data, console, frame, locals, args, buffers)
+        render(self, data, console, frame, locals, args, buffers, "stdout")
       end),
       stderr = vim.schedule_wrap(function(err, data)
-        if err or not data then
+        if err or not data or not self.job_status then
           return
         end
-        render(self, data, console, frame, locals, args, buffers)
+        render(self, data, console, frame, locals, args, buffers, "stderr")
       end),
     })
   end)()

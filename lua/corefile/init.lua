@@ -8,10 +8,6 @@ local M = {
   progress = progress,
 }
 
-local Split = require("nui.split")
-local Layout = require("nui.layout")
-local event = require("nui.utils.autocmd").event
-
 function progress:start()
   if self.client_id and vim.lsp.get_client_by_id(self.client_id) then
     return
@@ -246,6 +242,8 @@ local function render(
 end
 
 function M:layout()
+  local Split = require("nui.split")
+  local Layout = require("nui.layout")
   local source = {
     winid = vim.api.nvim_get_current_win(),
     bufnr = vim.api.nvim_get_current_buf(),
@@ -295,7 +293,7 @@ function M:layout()
   )
 
   for _, comp in pairs({ console, locals, args, frame }) do
-    comp:on(event.WinClosed, function()
+    comp:on(require("nui.utils.autocmd").event.WinClosed, function()
       self.progress:stop()
       self.job_status = false
       vim.uv.kill(-self.job.pid, "sigterm")
